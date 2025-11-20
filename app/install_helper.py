@@ -66,14 +66,51 @@ echo Done. Ensure grldr.mbr and menu.lst exist at %WORKPART%\
 """
 
 
-def download(url: str, dest: Path) -> None:
+def _require_twrp_hash(url: str, dest: Path, expected_sha256: str | None) -> None:
+    """Enforce supplying a hash when dealing with TWRP-named images."""
+
+    url_lower = url.lower()
+    dest_lower = dest.name.lower()
+    if ("twrp" in url_lower or "twrp" in dest_lower) and not expected_sha256:
+        raise SystemExit(
+            "Refusing to handle a TWRP-named image without --expected-sha256. "
+            "Supply a vendor-published hash to avoid unofficial recoveries."
+        )
+
+
+def download_with_hash(url: str, dest: Path, expected_sha256: str | None = None) -> str:
+    """Download *url* to *dest* while streaming SHA256 verification.
+
+    The download is written to a ``.part`` file first so we never leave a
+    half-written or unverified ISO behind. If *expected_sha256* is provided,
+    the hash is compared before renaming into place. A mismatch aborts the
+    download and removes the temporary file to guard against unofficial or
+    tampered images.
+    """
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(url) as response, open(dest, "wb") as fh:
-        while True:
-            chunk = response.read(64 * 1024)
-            if not chunk:
-                break
+    tmp_dest = dest.with_name(dest.name + ".part")
+    h = hashlib.sha256()
+
+    _require_twrp_hash(url, dest, expected_sha256)
+
+    with urllib.request.urlopen(url) as response, open(tmp_dest, "wb") as fh:
+        for chunk in iter(lambda: response.read(128 * 1024), b""):
+            h.update(chunk)
             fh.write(chunk)
+
+    digest = h.hexdigest()
+    if expected_sha256:
+        expected = expected_sha256.lower()
+        if digest.lower() != expected:
+            tmp_dest.unlink(missing_ok=True)
+            raise SystemExit(
+                "SHA256 mismatch for downloaded ISO. "
+                f"Expected {expected}, got {digest}. File removed."
+            )
+
+    tmp_dest.replace(dest)
+    return digest
 
 
 def sha256sum(path: Path) -> str:
@@ -106,12 +143,20 @@ def action_download_iso(args: argparse.Namespace) -> None:
     workdir = Path(args.workdir).expanduser()
     workdir.mkdir(parents=True, exist_ok=True)
     dest = workdir / args.iso_name
+    _require_twrp_hash(args.url, dest, args.expected_sha256)
     if dest.exists() and not args.force:
+        if "twrp" in dest.name.lower() and not args.expected_sha256:
+            raise SystemExit(
+                "TWRP-named image already exists but is unverified. "
+                "Re-run with --expected-sha256 and --force to replace it with a hashed download."
+            )
         print(f"ISO already exists at {dest}. Use --force to overwrite.")
         return
     print(f"Downloading {args.url} -> {dest}")
-    download(args.url, dest)
-    print(f"Download complete. SHA256: {sha256sum(dest)}")
+    digest = download_with_hash(args.url, dest, args.expected_sha256)
+    print(f"Download complete. SHA256: {digest}")
+    if args.expected_sha256:
+        print("SHA256 matches expected value.")
 
 
 def action_generate_menu(args: argparse.Namespace) -> None:
@@ -126,6 +171,23 @@ def action_generate_bcd(args: argparse.Namespace) -> None:
     workdir.mkdir(parents=True, exist_ok=True)
     path = write_bcd_batch(workdir)
     print(f"BCD install script written to {path}")
+
+
+def action_verify_iso(args: argparse.Namespace) -> None:
+    workdir = Path(args.workdir).expanduser()
+    iso_path = workdir / args.iso_name
+    if not iso_path.is_file():
+        raise SystemExit(f"ISO not found at {iso_path}. Use --workdir/--iso-name to point to it.")
+    _require_twrp_hash(args.url, iso_path, args.expected_sha256)
+    digest = sha256sum(iso_path)
+    print(f"SHA256 for {iso_path}: {digest}")
+    if args.expected_sha256:
+        expected = args.expected_sha256.lower()
+        if digest.lower() != expected:
+            raise SystemExit(
+                f"Hash mismatch. Expected {expected}, got {digest}. Replace the ISO before booting."
+            )
+        print("SHA256 matches expected value.")
 
 
 def action_full_setup(args: argparse.Namespace) -> None:
@@ -158,6 +220,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--iso-name", default=DEFAULT_ISO_NAME, help="Filename for the ISO")
     parser.add_argument("--url", default=DEFAULT_ISO_URL, help="Linux ISO URL")
     parser.add_argument("--force", action="store_true", help="Overwrite existing ISO")
+    parser.add_argument(
+        "--expected-sha256",
+        help="Expected SHA256 hash for the ISO; verification happens after download or via verify-iso.",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="Create the working directory").set_defaults(
@@ -172,6 +238,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("generate-bcd", help="Write BCD wiring batch script").set_defaults(
         func=action_generate_bcd
     )
+    sub.add_parser(
+        "verify-iso",
+        help="Compute SHA256 for the ISO in the workdir and compare with --expected-sha256",
+    ).set_defaults(func=action_verify_iso)
     sub.add_parser(
         "full-setup",
         help="Run init, download-iso, generate-menu, and generate-bcd",

@@ -27,9 +27,10 @@ python app/install_helper.py init --workdir C:\\linux-helper
 python app/install_helper.py download-iso --url <ISO_URL> --iso-name linux.iso --workdir C:\\linux-helper
 python app/install_helper.py generate-menu --iso-name linux.iso --workdir C:\\linux-helper
 python app/install_helper.py generate-bcd --workdir C:\\linux-helper
+python app/install_helper.py verify-iso --iso-name linux.iso --workdir C:\\linux-helper --expected-sha256 <HASH>
 ```
 
 ## Notes
 - The generated BCD script assumes `grldr.mbr` lives on the system drive or the drive you pass as `%1` to the `.bat` file.
 - You still need to supply grub4dos binaries yourself; the helper only writes configuration and boot wiring scripts.
-- Default ISO URL points at Debian; override it to use another distribution.
+- Default ISO URL points at Debian; override it to use another distribution. Provide `--expected-sha256` to ensure you are booting an official image instead of an unofficial or repackaged recovery (e.g., stray TWRP builds). Downloads whose name or URL looks like TWRP are blocked unless an expected hash is provided to avoid staging unsigned images, existing TWRP-named files must be replaced with a hashed download via `--force`, and `verify-iso` refuses to process a TWRP-named image unless you supply the vendor hash.

@@ -143,7 +143,6 @@ def action_download_iso(args: argparse.Namespace) -> None:
     workdir = Path(args.workdir).expanduser()
     workdir.mkdir(parents=True, exist_ok=True)
     dest = workdir / args.iso_name
-    _require_twrp_hash(args.url, dest, args.expected_sha256)
     if dest.exists() and not args.force:
         if "twrp" in dest.name.lower() and not args.expected_sha256:
             raise SystemExit(
@@ -152,6 +151,7 @@ def action_download_iso(args: argparse.Namespace) -> None:
             )
         print(f"ISO already exists at {dest}. Use --force to overwrite.")
         return
+    _require_twrp_hash(args.url, dest, args.expected_sha256)
     print(f"Downloading {args.url} -> {dest}")
     digest = download_with_hash(args.url, dest, args.expected_sha256)
     print(f"Download complete. SHA256: {digest}")
@@ -178,7 +178,12 @@ def action_verify_iso(args: argparse.Namespace) -> None:
     iso_path = workdir / args.iso_name
     if not iso_path.is_file():
         raise SystemExit(f"ISO not found at {iso_path}. Use --workdir/--iso-name to point to it.")
-    _require_twrp_hash("", iso_path, args.expected_sha256)
+    # Only check filename for TWRP detection in verify-iso, not URL (which defaults to Debian)
+    if "twrp" in iso_path.name.lower() and not args.expected_sha256:
+        raise SystemExit(
+            "Refusing to verify a TWRP-named image without --expected-sha256. "
+            "Supply a vendor-published hash to avoid unofficial recoveries."
+        )
     digest = sha256sum(iso_path)
     print(f"SHA256 for {iso_path}: {digest}")
     if args.expected_sha256:

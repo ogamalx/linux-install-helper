@@ -8,23 +8,17 @@ A small Python CLI (and PyInstaller-friendly exe) that prepares the files needed
 - Generates a `install-grub4dos.bat` script that wires grub4dos into BCD (run it from an elevated Command Prompt)
 
 ## Quick start (on Windows)
-You can produce a real `.exe` in a few minutes with only Python installed:
-
-1. Install Python 3.10+ on Windows and ensure `python` is on your `PATH`.
-2. Clone this repository and open an **elevated** PowerShell or Command Prompt in the checkout.
-3. Build the exe using the helper batch file:
-   ```bat
-   build_exe.bat
+1. Install Python 3.10+ and `pip install pyinstaller` if you want an `.exe`.
+2. Clone this repository and open an **elevated** PowerShell in the checkout.
+3. Run the helper in full-auto mode:
+   ```powershell
+   pyinstaller --onefile app/install_helper.py
+   .\dist\install_helper.exe full-setup --workdir C:\\linux-helper
    ```
-   The resulting file will be at `dist\\install_helper.exe`.
-4. Stage a working directory and download the ISO in one shot:
-   ```bat
-   dist\\install_helper.exe full-setup --workdir C:\\linux-helper
-   ```
-5. Copy `grldr` and `grldr.mbr` from the grub4dos project into `C:\linux-helper`.
-6. Review `C:\linux-helper\menu.lst` and adjust kernel parameters if your distro needs them.
-7. Run `C:\linux-helper\install-grub4dos.bat` from an **elevated** Command Prompt to add the boot entry.
-8. Reboot and pick **Linux via grub4dos** in the Windows boot menu to start the installer.
+4. Copy `grldr` and `grldr.mbr` from the grub4dos project into `C:\linux-helper`.
+5. Review `C:\linux-helper\menu.lst` and adjust kernel parameters if your distro needs them.
+6. Run `C:\linux-helper\install-grub4dos.bat` from an **elevated** Command Prompt to add the boot entry.
+7. Reboot and pick **Linux via grub4dos** in the Windows boot menu to start the installer.
 
 ## Manual usage
 You can also run individual steps:

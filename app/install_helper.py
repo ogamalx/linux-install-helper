@@ -178,7 +178,7 @@ def action_verify_iso(args: argparse.Namespace) -> None:
     iso_path = workdir / args.iso_name
     if not iso_path.is_file():
         raise SystemExit(f"ISO not found at {iso_path}. Use --workdir/--iso-name to point to it.")
-    _require_twrp_hash(args.url, iso_path, args.expected_sha256)
+    _require_twrp_hash("", iso_path, args.expected_sha256)
     digest = sha256sum(iso_path)
     print(f"SHA256 for {iso_path}: {digest}")
     if args.expected_sha256:

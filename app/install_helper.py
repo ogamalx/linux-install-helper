@@ -66,6 +66,14 @@ echo Done. Ensure grldr.mbr and menu.lst exist at %WORKPART%\
 """
 
 
+def _require_twrp_hash(path: Path, expected_sha256: str | None) -> None:
+    if "twrp" in path.name.lower() and not expected_sha256:
+        raise SystemExit(
+            "TWRP images require --expected-sha256 so the download can be verified. "
+            f"Pass the published SHA256 for {path.name}."
+        )
+
+
 def download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     with urllib.request.urlopen(url) as response, open(dest, "wb") as fh:
@@ -106,12 +114,31 @@ def action_download_iso(args: argparse.Namespace) -> None:
     workdir = Path(args.workdir).expanduser()
     workdir.mkdir(parents=True, exist_ok=True)
     dest = workdir / args.iso_name
+    _require_twrp_hash(dest, args.expected_sha256)
     if dest.exists() and not args.force:
         print(f"ISO already exists at {dest}. Use --force to overwrite.")
         return
     print(f"Downloading {args.url} -> {dest}")
     download(args.url, dest)
     print(f"Download complete. SHA256: {sha256sum(dest)}")
+
+
+def action_verify_iso(args: argparse.Namespace) -> None:
+    workdir = Path(args.workdir).expanduser()
+    iso_path = workdir / args.iso_name
+    if not iso_path.exists():
+        print(f"ISO not found at {iso_path}")
+        return
+
+    _require_twrp_hash(iso_path, args.expected_sha256)
+
+    digest = sha256sum(iso_path)
+    print(f"SHA256 for {iso_path}: {digest}")
+    if args.expected_sha256:
+        if digest.lower() == args.expected_sha256.lower():
+            print("Hash matches expected SHA-256.")
+        else:
+            print("Hash DOES NOT match expected SHA-256!")
 
 
 def action_generate_menu(args: argparse.Namespace) -> None:
@@ -157,6 +184,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--iso-name", default=DEFAULT_ISO_NAME, help="Filename for the ISO")
     parser.add_argument("--url", default=DEFAULT_ISO_URL, help="Linux ISO URL")
+    parser.add_argument(
+        "--expected-sha256",
+        help="Expected SHA-256 hash for the ISO (required for TWRP images).",
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite existing ISO")
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -176,6 +207,9 @@ def build_parser() -> argparse.ArgumentParser:
         "full-setup",
         help="Run init, download-iso, generate-menu, and generate-bcd",
     ).set_defaults(func=action_full_setup)
+    sub.add_parser(
+        "verify-iso", help="Calculate and optionally verify the ISO hash"
+    ).set_defaults(func=action_verify_iso)
     return parser
 
 
